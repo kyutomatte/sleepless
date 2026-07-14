@@ -11,7 +11,7 @@ use tauri::{
     image::Image,
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::TrayIconBuilder,
-    AppHandle, Manager, State, WindowEvent,
+    AppHandle, Manager, RunEvent, State, WindowEvent,
 };
 use tauri_plugin_autostart::ManagerExt as AutostartManagerExt;
 
@@ -711,9 +711,29 @@ fn sync_tray_menu(state: State<'_, AwakeProcess>, app: AppHandle) {
 }
 
 fn show_main_window(app: &AppHandle) {
+    set_dock_visible(app, true);
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.set_focus();
+    }
+}
+
+fn hide_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.hide();
+    }
+    set_dock_visible(app, false);
+}
+
+fn set_dock_visible(app: &AppHandle, visible: bool) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app.set_dock_visibility(visible);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, visible);
     }
 }
 
@@ -947,6 +967,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(AwakeProcess::default())
         .setup(|app| {
+            set_dock_visible(app.handle(), false);
             build_tray(app.handle())?;
             spawn_power_monitor(app.handle().clone());
             if !is_background_launch() {
@@ -957,7 +978,7 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                let _ = window.hide();
+                hide_main_window(window.app_handle());
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -967,6 +988,14 @@ pub fn run() {
             start_awake,
             stop_awake
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let RunEvent::ExitRequested { api, code, .. } = event {
+                if code.is_none() {
+                    api.prevent_exit();
+                    hide_main_window(app);
+                }
+            }
+        });
 }
