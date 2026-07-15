@@ -19,7 +19,7 @@ const TRAY_ID: &str = "main-tray";
 const TRAY_AWAKE_ICON: &[u8] = include_bytes!("../icons/tray-awake.png");
 const TRAY_SLEEP_ICON: &[u8] = include_bytes!("../icons/tray-sleep.png");
 const HELPER_BUNDLE_NAME: &str = "sleepless-pmset-helper";
-const HELPER_INSTALL_PATH: &str = "/Library/PrivilegedHelperTools/app.mac.acawake.pmset-helper";
+const HELPER_INSTALL_PATH: &str = "/Library/PrivilegedHelperTools/app.mac.sleepless.pmset-helper";
 const HELPER_VERSION: &str = "1";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -964,7 +964,6 @@ pub fn run() {
                 .args(["--background"])
                 .build(),
         )
-        .plugin(tauri_plugin_opener::init())
         .manage(AwakeProcess::default())
         .setup(|app| {
             set_dock_visible(app.handle(), false);

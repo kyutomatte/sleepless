@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const iconsDir = join(root, "src-tauri", "icons");
 const assetsDir = join(root, "src", "assets");
-const iconsetDir = "/private/tmp/ac-awake.iconset";
+const iconsetDir = "/private/tmp/sleepless.iconset";
 
 const palette = {
   transparent: [0, 0, 0, 0],
