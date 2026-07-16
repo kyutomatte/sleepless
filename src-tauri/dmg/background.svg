@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="460" viewBox="0 0 720 460">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#fbfbfd"/>
+      <stop offset="1" stop-color="#eef5f6"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#0f172a" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+
+  <rect width="720" height="460" fill="url(#bg)"/>
+  <rect x="28" y="26" width="664" height="402" rx="28" fill="#ffffff" opacity="0.78" filter="url(#softShadow)"/>
+
+  <text x="360" y="62" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="27" font-weight="700" fill="#1f2933">
+    Install Sleepless
+  </text>
+  <text x="360" y="94" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="600" fill="#5a6673">
+    Drag the app into Applications
+  </text>
+  <text x="360" y="117" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="500" fill="#7a8794">
+    앱을 Applications 폴더로 드래그하세요
+  </text>
+
+  <path d="M296 182 H424" stroke="#1482ff" stroke-width="10" stroke-linecap="round"/>
+  <path d="M407 157 L438 182 L407 207" fill="none" stroke="#1482ff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <text x="170" y="300" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="600" fill="#2d3742">
+    Sleepless.app
+  </text>
+  <text x="550" y="300" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="600" fill="#2d3742">
+    Applications
+  </text>
+
+  <rect x="60" y="326" width="600" height="92" rx="16" fill="#f2f5f7"/>
+  <text x="360" y="350" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="700" fill="#26313d">
+    First launch blocked? / 처음 실행이 막히나요?
+  </text>
+  <text x="360" y="373" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="500" fill="#536170">
+    Click Done, then System Settings &gt; Privacy &amp; Security &gt; Open Anyway.
+  </text>
+  <text x="360" y="394" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="500" fill="#536170">
+    완료를 누른 뒤 시스템 설정 &gt; 개인정보 보호 및 보안 &gt; 그래도 열기를 선택하세요.
+  </text>
+  <text x="360" y="412" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="500" fill="#7a8794">
+    Labels may vary by macOS version. / macOS 버전에 따라 문구가 조금 다를 수 있습니다.
+  </text>
+</svg>

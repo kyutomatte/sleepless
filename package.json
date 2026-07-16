@@ -10,7 +10,8 @@
     "build:helper": "cd src-tauri/helper && cargo build --release",
     "preview": "vite preview",
     "test": "vitest",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "package:dmg": "node scripts/package-dmg.mjs"
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.12.0",
