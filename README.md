@@ -13,9 +13,11 @@ Sleepless is a small macOS menu bar app that helps keep a Mac awake while it is 
 - 뚜껑이 닫히면 내장 디스플레이 밝기를 0으로 낮추고, 다시 열거나 모드를 끄면 이전 밝기를 복구합니다.
 - 뚜껑이 닫힌 상태에서는 60초마다 배터리 안전 상태를 확인합니다.
 - 배터리 사용 중 10%에 도달하면 awake mode를 자동 종료합니다.
-- `AC 연결 시 자동 시작` 옵션으로 전원이 연결될 때 awake mode를 자동 시작할 수 있습니다.
+- `AC 연결 시 자동 시작` 옵션은 메뉴바 백엔드가 전원 연결을 감시해 awake mode를 자동 시작합니다.
 - `로그인 시 백그라운드 실행` 옵션으로 macOS 로그인 시 창 없이 메뉴바에서 시작할 수 있습니다.
 - 창을 닫아도 앱은 종료되지 않고 메뉴바에서 계속 제어됩니다.
+
+`AC 연결 시 자동 시작`은 Sleepless가 메뉴바에서 실행 중일 때 동작합니다. Mac을 재시동한 뒤에도 사용하려면 `로그인 시 백그라운드 실행`도 켜 두세요.
 
 ## How It Works
 
@@ -103,7 +105,7 @@ Build outputs:
 
 ```text
 src-tauri/target/release/bundle/macos/Sleepless.app
-src-tauri/target/release/bundle/dmg/Sleepless_0.1.2_aarch64.dmg
+src-tauri/target/release/bundle/dmg/Sleepless_0.1.3_aarch64.dmg
 ```
 
 ## Release Checklist

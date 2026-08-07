@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::{
     ffi::{c_char, c_void, CString},
+    fs,
     path::PathBuf,
     process::{Child, Command, Stdio},
     sync::Mutex,
@@ -21,6 +22,7 @@ const TRAY_SLEEP_ICON: &[u8] = include_bytes!("../icons/tray-sleep.png");
 const HELPER_BUNDLE_NAME: &str = "sleepless-pmset-helper";
 const HELPER_INSTALL_PATH: &str = "/Library/PrivilegedHelperTools/app.mac.sleepless.pmset-helper";
 const HELPER_VERSION: &str = "1";
+const SETTINGS_FILE_NAME: &str = "settings.json";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 enum AwakeDuration {
@@ -82,6 +84,54 @@ struct SessionState {
 struct AwakeProcess {
     child: Mutex<Option<Child>>,
     session: Mutex<SessionState>,
+}
+
+#[derive(Default)]
+struct AutoStartTracker {
+    was_on_ac_power: bool,
+    attempted_on_current_ac: bool,
+}
+
+impl AutoStartTracker {
+    fn should_start(
+        &mut self,
+        start_on_ac_power: bool,
+        is_active: bool,
+        is_ac_power_connected: bool,
+    ) -> bool {
+        if !is_ac_power_connected {
+            self.was_on_ac_power = false;
+            self.attempted_on_current_ac = false;
+            return false;
+        }
+
+        if !self.was_on_ac_power {
+            self.was_on_ac_power = true;
+            self.attempted_on_current_ac = false;
+        }
+
+        if !start_on_ac_power || is_active || self.attempted_on_current_ac {
+            return false;
+        }
+
+        self.attempted_on_current_ac = true;
+        true
+    }
+
+    fn allow_retry(&mut self) {
+        self.attempted_on_current_ac = false;
+    }
+}
+
+#[derive(Default)]
+struct PowerPreferences {
+    start_on_ac_power: Mutex<bool>,
+    auto_start_tracker: Mutex<AutoStartTracker>,
+}
+
+#[derive(Default, Deserialize, Serialize)]
+struct StoredPreferences {
+    start_on_ac_power: bool,
 }
 
 impl Drop for AwakeProcess {
@@ -206,6 +256,36 @@ fn is_on_ac_power() -> Result<bool, String> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     Ok(stdout.contains("AC Power"))
+}
+
+fn preferences_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let config_dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|error| format!("Could not find the app configuration directory: {error}"))?;
+    fs::create_dir_all(&config_dir)
+        .map_err(|error| format!("Could not create the app configuration directory: {error}"))?;
+    Ok(config_dir.join(SETTINGS_FILE_NAME))
+}
+
+fn load_start_on_ac_power(app: &AppHandle) -> Result<bool, String> {
+    let path = preferences_path(app)?;
+    match fs::read_to_string(path) {
+        Ok(contents) => serde_json::from_str::<StoredPreferences>(&contents)
+            .map(|preferences| preferences.start_on_ac_power)
+            .map_err(|error| format!("Could not read app preferences: {error}")),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(format!("Could not read app preferences: {error}")),
+    }
+}
+
+fn save_start_on_ac_power(app: &AppHandle, enabled: bool) -> Result<(), String> {
+    let path = preferences_path(app)?;
+    let contents = serde_json::to_string(&StoredPreferences {
+        start_on_ac_power: enabled,
+    })
+    .map_err(|error| format!("Could not encode app preferences: {error}"))?;
+    fs::write(path, contents).map_err(|error| format!("Could not save app preferences: {error}"))
 }
 
 fn battery_percent() -> Option<u8> {
@@ -706,6 +786,37 @@ fn set_awake_duration(
 }
 
 #[tauri::command]
+fn get_start_on_ac_power(preferences: State<'_, PowerPreferences>) -> bool {
+    preferences
+        .start_on_ac_power
+        .lock()
+        .map(|enabled| *enabled)
+        .unwrap_or(false)
+}
+
+#[tauri::command]
+fn set_start_on_ac_power(
+    app: AppHandle,
+    preferences: State<'_, PowerPreferences>,
+    enabled: bool,
+) -> Result<(), String> {
+    save_start_on_ac_power(&app, enabled)?;
+
+    let mut start_on_ac_power = preferences
+        .start_on_ac_power
+        .lock()
+        .map_err(|_| "Could not lock app preferences.".to_string())?;
+    *start_on_ac_power = enabled;
+    drop(start_on_ac_power);
+
+    if let Ok(mut tracker) = preferences.auto_start_tracker.lock() {
+        tracker.allow_retry();
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
 fn sync_tray_menu(state: State<'_, AwakeProcess>, app: AppHandle) {
     refresh_tray(&app, is_awake_active(&state));
 }
@@ -869,7 +980,11 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-fn monitor_active_session(state: &AwakeProcess, app: &AppHandle) {
+fn monitor_power_state(
+    state: &AwakeProcess,
+    preferences: &PowerPreferences,
+    app: &AppHandle,
+) {
     let Ok(mut child_slot) = state.child.lock() else {
         return;
     };
@@ -878,13 +993,30 @@ fn monitor_active_session(state: &AwakeProcess, app: &AppHandle) {
         return;
     };
 
+    let is_ac_power_connected = is_on_ac_power().unwrap_or(false);
+    let start_on_ac_power = preferences
+        .start_on_ac_power
+        .lock()
+        .map(|enabled| *enabled)
+        .unwrap_or(false);
+    let should_auto_start = preferences
+        .auto_start_tracker
+        .lock()
+        .map(|mut tracker| tracker.should_start(start_on_ac_power, is_active, is_ac_power_connected))
+        .unwrap_or(false);
+
+    drop(child_slot);
+
+    if should_auto_start {
+        let duration = current_awake_duration(state);
+        let _ = start_awake_process(state, Some(app), duration);
+        return;
+    }
+
     if !is_active {
         return;
     }
 
-    drop(child_slot);
-
-    let is_ac_power_connected = is_on_ac_power().unwrap_or(false);
     let is_closed = is_lid_closed();
     let percent = battery_percent();
 
@@ -948,7 +1080,8 @@ fn spawn_power_monitor(app: AppHandle) {
     thread::spawn(move || loop {
         thread::sleep(Duration::from_secs(5));
         let state = app.state::<AwakeProcess>();
-        monitor_active_session(&state, &app);
+        let preferences = app.state::<PowerPreferences>();
+        monitor_power_state(&state, &preferences, &app);
     });
 }
 
@@ -965,7 +1098,14 @@ pub fn run() {
                 .build(),
         )
         .manage(AwakeProcess::default())
+        .manage(PowerPreferences::default())
         .setup(|app| {
+            let preferences = app.state::<PowerPreferences>();
+            if let Ok(enabled) = load_start_on_ac_power(app.handle()) {
+                if let Ok(mut start_on_ac_power) = preferences.start_on_ac_power.lock() {
+                    *start_on_ac_power = enabled;
+                }
+            }
             set_dock_visible(app.handle(), false);
             build_tray(app.handle())?;
             spawn_power_monitor(app.handle().clone());
@@ -983,6 +1123,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             awake_status,
             set_awake_duration,
+            get_start_on_ac_power,
+            set_start_on_ac_power,
             sync_tray_menu,
             start_awake,
             stop_awake
@@ -997,4 +1139,17 @@ pub fn run() {
                 }
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AutoStartTracker;
+
+    #[test]
+    fn starts_once_when_ac_connects_with_auto_start_enabled() {
+        let mut tracker = AutoStartTracker::default();
+
+        assert!(tracker.should_start(true, false, true));
+        assert!(!tracker.should_start(true, false, true));
+    }
 }

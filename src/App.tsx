@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import "./App.css";
@@ -19,7 +19,6 @@ import {
   stopAwakeSuccess,
   tickRuntime,
   toggleLaunchAtLogin,
-  toggleStartOnAcPower,
 } from "./features/awake/awakeSlice";
 
 const START_ON_AC_POWER_KEY = "sleepless.startOnAcPower";
@@ -68,15 +67,37 @@ function App() {
     runtimeSeconds,
     startOnAcPower,
   } = useAppSelector((state) => state.awake);
-  const previousAcPower = useRef<boolean | null>(null);
-  const autoStartBlocked = useRef(false);
-  const autoStartInFlight = useRef(false);
-
   useEffect(() => {
-    const savedStartOnAcPower = window.localStorage.getItem(START_ON_AC_POWER_KEY);
-    if (savedStartOnAcPower !== null) {
-      dispatch(setStartOnAcPower(savedStartOnAcPower === "true"));
+    let isCancelled = false;
+
+    async function loadStartOnAcPowerPreference() {
+      const legacyPreference = window.localStorage.getItem(START_ON_AC_POWER_KEY);
+      try {
+        const savedStartOnAcPower = await invoke<boolean>("get_start_on_ac_power");
+        const shouldMigrateLegacyPreference = legacyPreference === "true" && !savedStartOnAcPower;
+
+        if (shouldMigrateLegacyPreference) {
+          await invoke("set_start_on_ac_power", { enabled: true });
+        }
+
+        if (!isCancelled) {
+          dispatch(setStartOnAcPower(shouldMigrateLegacyPreference || savedStartOnAcPower));
+        }
+        window.localStorage.removeItem(START_ON_AC_POWER_KEY);
+      } catch (caughtError) {
+        if (!isCancelled) {
+          dispatch(setStartOnAcPower(legacyPreference === "true"));
+          dispatch(
+            preferenceFailure(
+              `AC auto-start preference could not load: ${String(caughtError)}`,
+            ),
+          );
+        }
+      }
     }
+
+    void loadStartOnAcPowerPreference();
+
     const savedAwakeDuration = window.localStorage.getItem(AWAKE_DURATION_KEY);
     if (isAwakeDuration(savedAwakeDuration)) {
       dispatch(setAwakeDuration(savedAwakeDuration));
@@ -92,30 +113,14 @@ function App() {
         }
       })
       .catch(() => undefined);
+
+    return () => {
+      isCancelled = true;
+    };
   }, [dispatch]);
 
   useEffect(() => {
     let isCancelled = false;
-
-    async function startFromAcPower() {
-      autoStartInFlight.current = true;
-      dispatch(startAwakeRequest());
-      try {
-        const startedStatus = await invoke<AwakeStatus>("start_awake", {
-          awakeDuration,
-        });
-        if (!isCancelled) {
-          dispatch(startAwakeSuccess(startedStatus));
-        }
-      } catch (caughtError) {
-        autoStartBlocked.current = true;
-        if (!isCancelled) {
-          dispatch(startAwakeFailure(String(caughtError)));
-        }
-      } finally {
-        autoStartInFlight.current = false;
-      }
-    }
 
     async function refreshAwakeStatus() {
       try {
@@ -125,22 +130,6 @@ function App() {
         }
 
         dispatch(awakeStatusReceived(status));
-
-        const becameConnected = status.isAcPowerConnected && previousAcPower.current !== true;
-        if (!status.isAcPowerConnected) {
-          autoStartBlocked.current = false;
-        }
-        previousAcPower.current = status.isAcPowerConnected;
-
-        if (
-          startOnAcPower &&
-          becameConnected &&
-          !status.isActive &&
-          !autoStartInFlight.current &&
-          !autoStartBlocked.current
-        ) {
-          await startFromAcPower();
-        }
       } catch {
         if (!isCancelled) {
           dispatch(awakeStatusReceived(false));
@@ -155,7 +144,7 @@ function App() {
       isCancelled = true;
       window.clearInterval(timer);
     };
-  }, [awakeDuration, dispatch, startOnAcPower]);
+  }, [dispatch]);
 
   useEffect(() => {
     if (!isActive) {
@@ -208,10 +197,16 @@ function App() {
     }
   }
 
-  function toggleStartOnAcPowerSetting() {
+  async function toggleStartOnAcPowerSetting() {
     const nextValue = !startOnAcPower;
-    window.localStorage.setItem(START_ON_AC_POWER_KEY, String(nextValue));
-    dispatch(toggleStartOnAcPower());
+    try {
+      await invoke("set_start_on_ac_power", { enabled: nextValue });
+      dispatch(setStartOnAcPower(nextValue));
+    } catch (caughtError) {
+      dispatch(
+        preferenceFailure(`AC auto-start preference could not change: ${String(caughtError)}`),
+      );
+    }
   }
 
   async function changeAwakeDuration(nextDuration: AwakeDuration) {
@@ -339,7 +334,9 @@ function App() {
             </div>
             <input
               checked={startOnAcPower}
-              onChange={toggleStartOnAcPowerSetting}
+              onChange={() => {
+                void toggleStartOnAcPowerSetting();
+              }}
               type="checkbox"
             />
           </label>
